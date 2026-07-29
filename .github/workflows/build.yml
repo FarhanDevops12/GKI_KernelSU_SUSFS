@@ -1155,94 +1155,58 @@ jobs:
         run: |
           set -e
           echo "Integrating Re-Kernel..."
-
           TMP_REKERNEL=/tmp/rekernel
           rm -rf "$TMP_REKERNEL"
-          git clone --depth 1 --branch main https://github.com/Sakion-Team/Re-Kernel.git "$TMP_REKERNEL"
+          git clone --depth 1 https://github.com/Sakion-Team/Re-Kernel.git "$TMP_REKERNEL"
 
           # 准备驱动源码
-          rm -rf common/drivers/rekernel
           mkdir -p common/drivers/rekernel
           cp -a "$TMP_REKERNEL/LKM-Source/." common/drivers/rekernel/
 
-          # 重写 Kconfig（适配 in-tree）
-          cat > common/drivers/rekernel/Kconfig << 'EOF'
-          menu "Re:Kernel"
-
-          config REKERNEL
-              bool "Re:Kernel support (GKI Vendor Hooks)"
-              default y
-              help
-                Enable Re-Kernel support.
-
-          config REKERNEL_NETWORK
-              bool "Re:Kernel NetReceive unfreeze support"
-              depends on REKERNEL
-              default y
-
-          config REKERNEL_LEGACY_NETLINK
-              bool "Re:Kernel legacy raw-netlink transport"
-              depends on REKERNEL
-              default n
-
-          endmenu
-          EOF
-
-          # 重写 Makefile（适配 in-tree）
+          # 为 in-tree 构建生成 Makefile（上游 Makefile 为 obj-m）
           cat > common/drivers/rekernel/Makefile << 'EOF'
           obj-$(CONFIG_REKERNEL) += rekernel.o
-
           rekernel-y := \
-                  rekernel_main.o \
-                  rekernel_netlink.o \
-                  rekernel_binder.o \
-                  rekernel_signal.o \
-                  rekernel_netfilter.o
+              rekernel_main.o \
+              rekernel_netlink.o \
+              rekernel_binder.o \
+              rekernel_signal.o \
+              rekernel_netfilter.o
 
           ccflags-$(CONFIG_REKERNEL_NETWORK) += -DNETWORK_FILTER
-
-          ifdef REKERNEL_VERSION
-          ccflags-y += -DREKERNEL_VERSION=\"$(REKERNEL_VERSION)\"
-          endif
           EOF
 
           # 挂载到驱动树
-          grep -qF 'source "drivers/rekernel/Kconfig"' common/drivers/Kconfig || \
+          if ! grep -qF 'source "drivers/rekernel/Kconfig"' common/drivers/Kconfig; then
             sed -i '/^endmenu$/i source "drivers/rekernel/Kconfig"' common/drivers/Kconfig
+          fi
 
-          grep -qF 'obj-$(CONFIG_REKERNEL) += rekernel/' common/drivers/Makefile || \
+          if ! grep -qF 'obj-$(CONFIG_REKERNEL) += rekernel/' common/drivers/Makefile; then
             echo 'obj-$(CONFIG_REKERNEL) += rekernel/' >> common/drivers/Makefile
+          fi
 
           # 启用内核版本宏
           REKERNEL_H="common/drivers/rekernel/rekernel.h"
           VERSION_MACRO="KERNEL_$(echo "${{ inputs.kernel_version }}" | tr '.' '_')"
-
-          if grep -q "^// #define ${VERSION_MACRO}$" "$REKERNEL_H"; then
+          if [ -f "$REKERNEL_H" ] && grep -q "^// #define ${VERSION_MACRO}$" "$REKERNEL_H"; then
             sed -i "s|^// #define ${VERSION_MACRO}$|#define ${VERSION_MACRO}|" "$REKERNEL_H"
           fi
 
-          # 修正 binder_internal.h 引用
-          find common/drivers/rekernel -name "*.c" -exec \
-            sed -i 's|#include <../android/binder_internal.h>|#include "../../drivers/android/binder_internal.h"|g' {} \;
+          # 修正头文件包含路径（适配 in-tree 编译）
+          find common/drivers/rekernel -name '*.c' -exec \
+            sed -i 's|#include <../android/binder_internal.h>|#include "../../drivers/android/binder_internal.h"|g' {} +
 
-          # 补齐 binder_internal 依赖
-          if [ -f common/drivers/rekernel/rekernel_binder.c ]; then
-            grep -qF '#include <linux/seq_file.h>' common/drivers/rekernel/rekernel_binder.c || \
-              sed -i '/#include <trace\/hooks\/signal.h>/a #include <linux/seq_file.h>' \
-              common/drivers/rekernel/rekernel_binder.c
-          fi
+          # 补齐 binder_internal 依赖（避免 5.10 下 DEFINE_SHOW_ATTRIBUTE 报错）
+          find common/drivers/rekernel -name '*.c' | while read -r file; do
+            if grep -q '#include <trace/hooks/signal.h>' "$file" && \
+               ! grep -q '#include <linux/seq_file.h>' "$file"; then
+              sed -i '/#include <trace\/hooks\/signal.h>/a #include <linux/seq_file.h>' "$file"
+            fi
+          done
 
           # 配置 defconfig（幂等）
-          grep -q '^CONFIG_REKERNEL=y$' "$DEFCONFIG" || \
-            echo "CONFIG_REKERNEL=y" >> "$DEFCONFIG"
-
-          grep -q '^CONFIG_REKERNEL_NETWORK=y$' "$DEFCONFIG" || \
-            echo "CONFIG_REKERNEL_NETWORK=y" >> "$DEFCONFIG"
-
-          grep -q '^CONFIG_REKERNEL_LEGACY_NETLINK=n$' "$DEFCONFIG" || \
-            echo "CONFIG_REKERNEL_LEGACY_NETLINK=n" >> "$DEFCONFIG"
-
-          echo "Re-Kernel integration completed."
+          grep -q '^CONFIG_REKERNEL=y$' "$DEFCONFIG" || echo "CONFIG_REKERNEL=y" >> "$DEFCONFIG"
+          grep -q '^CONFIG_REKERNEL_NETWORK=y$' "$DEFCONFIG" || echo "CONFIG_REKERNEL_NETWORK=y" >> "$DEFCONFIG"
       # ==================== 配置内核选项 ====================
       # 添加 KernelSU 和其他必要的内核配置
       - name: 配置内核选项
@@ -1480,65 +1444,6 @@ jobs:
           mv ../Image ./Image
           zip -r "../$ZIP_NAME" ./*
 
-      # ==================== 构建 Boot 镜像 (Android 12) ====================
-      # Android 12 需要从 GKI 认证镜像中提取 ramdisk
-#      - name: 构建 Boot 镜像 (Android 12)
-#        if: inputs.android_version == 'android12'
-#        working-directory: bootimgs
-#        run: |
-#          GKI_URL=https://dl.google.com/android/gki/gki-certified-boot-android12-5.10-${{ inputs.os_patch_level }}_${{ inputs.revision }}.zip
-#          FALLBACK_URL=https://dl.google.com/android/gki/gki-certified-boot-android12-5.10-2023-01_r1.zip
-#
-#          status=$(curl -sL -w "%{http_code}" "$GKI_URL" -o /dev/null)
-#          if [ "$status" = "200" ]; then
-#            curl -Lo gki-kernel.zip "$GKI_URL"
-#          else
-#            curl -Lo gki-kernel.zip "$FALLBACK_URL"
-#          fi
-#
-#          unzip gki-kernel.zip && rm gki-kernel.zip
-#          $UNPACK_BOOTIMG --boot_img="$(pwd)/boot-5.10.img"
-#
-#          gzip -n -k -f -9 ./Image > ./Image.gz
-#
-#         # 创建普通 boot.img
-#          $MKBOOTIMG --header_version 4 --kernel Image --output boot.img --ramdisk out/ramdisk --os_version 12.0.0 --os_patch_level "${{ inputs.os_patch_level }}"
-#          $AVBTOOL add_hash_footer --partition_name boot --partition_size $((64 * 1024 * 1024)) --image boot.img --algorithm SHA256_RSA2048 --key $BOOT_SIGN_KEY_PATH
-#          cp ./boot.img ../${{ inputs.android_version }}-${{ inputs.kernel_version }}.${{ inputs.sub_level }}-${{ inputs.os_patch_level }}-boot.img
-#
-#          # 创建 gzip 压缩的 boot.img
-#          $MKBOOTIMG --header_version 4 --kernel Image.gz --output boot-gz.img --ramdisk out/ramdisk --os_version 12.0.0 --os_patch_level "${{ inputs.os_patch_level }}"
-#          $AVBTOOL add_hash_footer --partition_name boot --partition_size $((64 * 1024 * 1024)) --image boot-gz.img --algorithm SHA256_RSA2048 --key $BOOT_SIGN_KEY_PATH
-#          cp ./boot-gz.img ../${{ inputs.android_version }}-${{ inputs.kernel_version }}.${{ inputs.sub_level }}-${{ inputs.os_patch_level }}-boot-gz.img
-#
-#          # 创建 lz4 压缩的 boot.img
-#          $MKBOOTIMG --header_version 4 --kernel Image.lz4 --output boot-lz4.img --ramdisk out/ramdisk --os_version 12.0.0 --os_patch_level "${{ inputs.os_patch_level }}"
-#          $AVBTOOL add_hash_footer --partition_name boot --partition_size $((64 * 1024 * 1024)) --image boot-lz4.img --algorithm SHA256_RSA2048 --key $BOOT_SIGN_KEY_PATH
-#          cp ./boot-lz4.img ../${{ inputs.android_version }}-${{ inputs.kernel_version }}.${{ inputs.sub_level }}-${{ inputs.os_patch_level }}-boot-lz4.img
-#
-#      # ==================== 构建 Boot 镜像 (Android 13+) ====================
-#      # Android 13 及以上版本不需要 ramdisk
-#      - name: 构建 Boot 镜像 (Android 13+)
-#        if: inputs.android_version == 'android13' || inputs.android_version == 'android14' || inputs.android_version == 'android15' || inputs.android_version == 'android16'
-#        working-directory: bootimgs
-#        run: |
-#          gzip -n -k -f -9 ./Image > ./Image.gz
-#
-#          # 创建普通 boot.img
-#          $MKBOOTIMG --header_version 4 --kernel Image --output boot.img
-#          $AVBTOOL add_hash_footer --partition_name boot --partition_size $((64 * 1024 * 1024)) --image boot.img --algorithm SHA256_RSA2048 --key $BOOT_SIGN_KEY_PATH
-#          cp ./boot.img ../${{ inputs.android_version }}-${{ inputs.kernel_version }}.${{ inputs.sub_level }}-${{ inputs.os_patch_level }}-boot.img
-#
-#          # 创建 gzip 压缩的 boot.img
-#          $MKBOOTIMG --header_version 4 --kernel Image.gz --output boot-gz.img
-#          $AVBTOOL add_hash_footer --partition_name boot --partition_size $((64 * 1024 * 1024)) --image boot-gz.img --algorithm SHA256_RSA2048 --key $BOOT_SIGN_KEY_PATH
-#          cp ./boot-gz.img ../${{ inputs.android_version }}-${{ inputs.kernel_version }}.${{ inputs.sub_level }}-${{ inputs.os_patch_level }}-boot-gz.img
-#
-#          # 创建 lz4 压缩的 boot.img
-#          $MKBOOTIMG --header_version 4 --kernel Image.lz4 --output boot-lz4.img
-#          $AVBTOOL add_hash_footer --partition_name boot --partition_size $((64 * 1024 * 1024)) --image boot-lz4.img --algorithm SHA256_RSA2048 --key $BOOT_SIGN_KEY_PATH
-#          cp ./boot-lz4.img ../${{ inputs.android_version }}-${{ inputs.kernel_version }}.${{ inputs.sub_level }}-${{ inputs.os_patch_level }}-boot-lz4.img
-#
       # ==================== 收集补丁冲突文件 ====================
       # 收集所有 .rej 文件用于调试补丁失败问题
       - name: 收集补丁冲突文件
