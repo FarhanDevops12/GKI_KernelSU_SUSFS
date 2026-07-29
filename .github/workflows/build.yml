@@ -85,7 +85,10 @@ on:
         required: false
         type: boolean
         default: false
-
+      enable_nomount:
+        required: false
+        type: boolean
+        default: false
 jobs:
   build-kernel:
     name: "${{ inputs.kernel_version }}.${{ inputs.sub_level }}-${{ inputs.android_version }}-${{ inputs.os_patch_level }}-ReSukiSU"
@@ -122,6 +125,7 @@ jobs:
           echo "Droidspaces   : ${{ inputs.droidspaces }}"
           echo "NTSync        : ${{ inputs.droidspaces_ntsync }}"
           echo "Stock Config  : 自动检测 config/stock_defconfig"
+          echo "NoMount       : ${{ inputs.enable_nomount }}"
           echo "========================================"
 
       # ==================== 清理磁盘空间 ====================
@@ -756,6 +760,52 @@ jobs:
               fi
             fi
           fi
+
+      # ==================== 克隆 NoMount ====================
+      - name: 克隆 NoMount
+        if: inputs.enable_nomount
+        run: |
+          git clone --depth 1 https://github.com/maxsteeel/nomount.git /tmp/nomount
+          echo "NOMOUNT_DIR=/tmp/nomount" >> $GITHUB_ENV
+
+      # ==================== 集成 NoMount ====================
+      - name: 集成 NoMount
+        if: inputs.enable_nomount
+        working-directory: ${{ env.KERNEL_ROOT }}/common
+        run: |
+          set -e
+
+          KV="5.15"
+          PATCH_FILE="$NOMOUNT_DIR/kernel/patches/nomount_${KV}_kernel_integration.patch"
+
+          echo "NOMOUNT_DIR=$NOMOUNT_DIR"
+          echo "PATCH_FILE=$PATCH_FILE"
+
+          if [ ! -f "$PATCH_FILE" ]; then
+            echo "::warning::NoMount patch tidak ditemukan: $PATCH_FILE"
+            find "$NOMOUNT_DIR/kernel" -type f
+            exit 0
+          fi
+
+          echo "Apply patch: $PATCH_FILE"
+          if ! patch -p1 --forward < "$PATCH_FILE"; then
+            echo "::warning::Patch NoMount gagal (mungkin sudah terpasang / context beda)"
+          fi
+
+          echo "Copy source NoMount ke fs/"
+          cp -fv "$NOMOUNT_DIR/kernel/src/"* ./fs/
+
+          if [ -n "$DEFCONFIG" ] && [ -f "$DEFCONFIG" ]; then
+            if grep -q '^# CONFIG_NOMOUNT is not set' "$DEFCONFIG"; then
+              sed -i 's/^# CONFIG_NOMOUNT is not set/CONFIG_NOMOUNT=y/' "$DEFCONFIG"
+            elif ! grep -q '^CONFIG_NOMOUNT=y' "$DEFCONFIG"; then
+              echo 'CONFIG_NOMOUNT=y' >> "$DEFCONFIG"
+            fi
+          else
+            echo "::warning::DEFCONFIG tidak ditemukan: $DEFCONFIG"
+          fi
+
+          echo "NoMount integration done."
 
       - name: 克隆 Droidspaces 补丁仓库
         if: inputs.droidspaces != 'off'
