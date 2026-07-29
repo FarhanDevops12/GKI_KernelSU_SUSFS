@@ -148,6 +148,7 @@
 {
   "android_version": "android13",
   "kernel_version": "5.15",
+  "lts": "5.15.178",
   "entries": [
     {
       "date": "2025-05",
