@@ -1,4 +1,4 @@
-::: {align="center"}
+<div align="center">
 # GKI KernelSU SUSFS
 
 ### Automated Build Repository for ReSukiSU
@@ -11,7 +11,7 @@
 [![SUSFS](https://img.shields.io/badge/SUSFS-Integrated-E67E22?style=flat-square)](https://gitlab.com/simonpunk/susfs4ksu)
 
 ------------------------------------------------------------------------
-:::
+</div>
 
 ## ⚠️ Repository Notes
 
@@ -132,11 +132,11 @@ The build process will automatically:
 
 ------------------------------------------------------------------------
 
-::: {align="center"}
+<div align="center">
 **More content will be added in future updates...**
 
 ⭐ If this project helps you, please consider giving it a Star!
 
 ⭐ For notifications about new prebuilt releases and major updates,
 follow our Telegram channel.
-:::
+</div>
