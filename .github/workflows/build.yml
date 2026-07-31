@@ -89,6 +89,10 @@ on:
         required: false
         type: boolean
         default: false
+      nomount_kernel_version:
+        required: false
+        type: string
+        default: "5.15"
 jobs:
   build-kernel:
     name: "${{ inputs.kernel_version }}.${{ inputs.sub_level }}-${{ inputs.android_version }}-${{ inputs.os_patch_level }}-ReSukiSU"
@@ -126,6 +130,7 @@ jobs:
           echo "NTSync        : ${{ inputs.droidspaces_ntsync }}"
           echo "Stock Config  : 自动检测 config/stock_defconfig"
           echo "NoMount       : ${{ inputs.enable_nomount }}"
+          echo "NoMount KV      : ${{ inputs.nomount_kernel_version }}"
           echo "========================================"
 
       # ==================== 清理磁盘空间 ====================
@@ -775,7 +780,7 @@ jobs:
         run: |
           set -e
 
-          KV="5.15"
+          KV="${{ inputs.nomount_kernel_version }}"
           PATCH_FILE="$NOMOUNT_DIR/kernel/patches/nomount_${KV}_kernel_integration.patch"
 
           echo "NOMOUNT_DIR=$NOMOUNT_DIR"
