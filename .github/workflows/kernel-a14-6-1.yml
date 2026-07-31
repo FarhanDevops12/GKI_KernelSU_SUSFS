@@ -146,7 +146,7 @@ on:
       nomount_kernel_version:
         required: false
         type: string
-        default: "5.15"
+        default: "6.1"
 
 jobs:
   # 1. 前置准备任务：读取、去重并解析 6.1.json
@@ -199,7 +199,7 @@ jobs:
       droidspaces: ${{ inputs.droidspaces || 'off' }}
       droidspaces_ntsync: ${{ inputs.droidspaces_ntsync || false }}
       enable_nomount: ${{ inputs.enable_nomount || false }}
-      nomount_kernel_version: ${{ inputs.nomount_kernel_version || '5.15' }}
+      nomount_kernel_version: ${{ inputs.nomount_kernel_version || '6.1' }}
 
   # 3. 仅在直接触发时运行，从 main.yml 调用时跳过
   get-ksu-manager:
