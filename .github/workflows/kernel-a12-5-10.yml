@@ -61,6 +61,27 @@ on:
           - "123"
           - "345"
         default: "off"
+      enable_nomount:
+        description: "启用 NoMount"
+        required: false
+        type: boolean
+        default: false
+      nomount_kernel_version:
+        description: "NoMount Kernel Version"
+        required: false
+        type: choice
+        options:
+          - "4.9"
+          - "4.14"
+          - "4.19"
+          - "5.4"
+          - "5.10"
+          - "5.15"
+          - "6.1"
+          - "6.6"
+          - "6.12"
+          - "6.18"
+        default: "5.10"
       droidspaces_ntsync:
         description: "启用 Droidspaces 容器 NTSync 支持（需启用 Droidspaces）"
         required: false
@@ -109,6 +130,14 @@ on:
         required: false
         type: boolean
         default: false
+      enable_nomount:
+        required: false
+        type: boolean
+        default: false
+      nomount_kernel_version:
+        required: false
+        type: string
+        default: "5.10"
 
 jobs:
   build-kernels-a12-5-10:
@@ -203,7 +232,8 @@ jobs:
       enable_susfs: ${{ !inputs.cancel_susfs }}
       droidspaces: ${{ inputs.droidspaces || 'off' }}
       droidspaces_ntsync: ${{ inputs.droidspaces_ntsync || false }}
-
+      enable_nomount: ${{ inputs.enable_nomount || false }}
+      nomount_kernel_version: ${{ inputs.nomount_kernel_version || '5.10' }}
   # 仅在直接触发时运行，从 main.yml 调用时跳过
   get-ksu-manager:
     if: ${{ !inputs.called_from_main }}

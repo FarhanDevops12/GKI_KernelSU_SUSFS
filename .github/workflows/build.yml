@@ -770,7 +770,7 @@ jobs:
       - name: 克隆 NoMount
         if: inputs.enable_nomount
         run: |
-          git clone --branch master --single-branch --depth 1 https://github.com/maxsteeel/nomount.git /tmp/nomount
+          git clone --branch dev --single-branch --depth 1 https://github.com/maxsteeel/nomount.git /tmp/nomount
           echo "NOMOUNT_DIR=/tmp/nomount" >> $GITHUB_ENV
 
       # ==================== 集成 NoMount ====================
