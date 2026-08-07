@@ -347,8 +347,8 @@ jobs:
 
       - name: 获取 KernelSU 提交信息
         run: |
-          REPO_URL="https://github.com/ReSukiSU/ReSukiSU.git"
-          REPO_URL2="ReSukiSU/ReSukiSU"
+          REPO_URL="https://github.com/backslashxx/KernelSU.git"
+          REPO_URL2="backslashxx/KernelSU"
 
           # 如果用户输入了自定义分支/commit，优先使用
           if [ -n "${{ inputs.kernelsu_branch }}" ]; then

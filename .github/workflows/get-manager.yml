@@ -66,7 +66,7 @@ jobs:
         id: get_version
         run: |
           echo "This is the ReSukiSU variant"
-          git clone https://github.com/ReSukiSU/ReSukiSU.git KernelSU
+          git clone https://github.com/backslashxx/KernelSU.git KernelSU
 
           cd KernelSU
 
